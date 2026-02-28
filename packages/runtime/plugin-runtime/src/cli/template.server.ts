@@ -58,7 +58,11 @@ const handleRSCRequest = async (request, ServerRoot, options) => {
     element: options.rscRoot
   });
 
-  return new Response(stream);
+  return new Response(stream, {
+    headers: {
+      'content-type': 'text/x-component'
+    },
+  });
 }
 
 
@@ -111,7 +115,11 @@ export const entryForCSRWithRSC = ({
             element: options.rscRoot,
     });
 
-    return new Response(stream);
+    return new Response(stream, {
+      headers: {
+        'content-type': 'text/x-component'
+      },
+    });
   }
 
   export const rscPayloadHandler = createRequestHandler(handleRequest, {

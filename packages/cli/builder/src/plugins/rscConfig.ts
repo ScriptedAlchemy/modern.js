@@ -5,6 +5,9 @@ import type { RsbuildPlugin, Rspack } from '@rsbuild/core';
 const ASYNC_STORAGE_PATTERN = /universal[/\\]async_storage/;
 const RSC_COMMON_LAYER = 'rsc-common';
 const ENTRY_NAME_VAR = '__MODERN_JS_ENTRY_NAME';
+export const ROUTE_SERVER_ENTRY_FILE_PATTERN =
+  /(?:^|[/\\])routes(?:[/\\].*)?[/\\](layout|page|\$)\.[tj]sx?$/;
+const APP_SERVER_ENTRY_FILE_PATTERN = /[/\\]App\.[tj]sx?$/;
 
 const createVirtualModule = (content: string) =>
   `data:text/javascript,${encodeURIComponent(content)}`;
@@ -60,14 +63,13 @@ export function pluginRscConfig(): RsbuildPlugin {
             // Matches: layout.tsx, layout.ts, layout.jsx, layout.js
             //         page.tsx, page.ts, page.jsx, page.js
             //         $.tsx, $.ts, $.jsx, $.js
-            // Use [/\\] before filename so both Unix (/) and Windows (\) paths match
-            const routeFilePattern =
-              /routes[/\\].*[/\\](layout|page|\$)\.[tj]sx?$/;
+            // Supports both root-level routes files (routes/page.tsx) and nested routes.
+            const routeFilePattern = ROUTE_SERVER_ENTRY_FILE_PATTERN;
 
             // Pattern 2: Match App.[tj]sx files anywhere (self-controlled routing)
             // Matches: App.tsx, App.ts, App.jsx, App.js in any directory
             // Note: node_modules is already excluded by the exclude rule
-            const appFilePattern = /[/\\]App\.[tj]sx?$/;
+            const appFilePattern = APP_SERVER_ENTRY_FILE_PATTERN;
 
             // Combine both patterns
             const combinedPattern = new RegExp(

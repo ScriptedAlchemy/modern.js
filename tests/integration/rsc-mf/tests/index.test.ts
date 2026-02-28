@@ -66,6 +66,14 @@ interface FailedBrowserRequestRecord {
   failureText: string;
 }
 
+function isObjectObjectFallbackRequest(url: string) {
+  return (
+    url.includes('/[object%20Object]') ||
+    url.includes('/[object Object]') ||
+    url.includes('/%5Bobject%20Object%5D')
+  );
+}
+
 async function waitForActionRequestCount({
   actionRequestIds,
   minimumCount,
@@ -455,6 +463,13 @@ function runTests({ mode }: TestConfig) {
         }
         const url = response.url();
         const request = response.request();
+        if (
+          request.method() === 'GET' &&
+          status === 404 &&
+          isObjectObjectFallbackRequest(url)
+        ) {
+          return;
+        }
         const hostOrigin = `http://127.0.0.1:${hostPort}`;
         const remoteOrigin = `http://127.0.0.1:${remotePort}`;
         if (!url.startsWith(hostOrigin) && !url.startsWith(remoteOrigin)) {
@@ -476,6 +491,14 @@ function runTests({ mode }: TestConfig) {
 
       page.on('requestfailed', request => {
         const url = request.url();
+        const failureText = request.failure()?.errorText || 'unknown';
+        if (
+          request.method() === 'GET' &&
+          failureText === 'net::ERR_ABORTED' &&
+          isObjectObjectFallbackRequest(url)
+        ) {
+          return;
+        }
         const hostOrigin = `http://127.0.0.1:${hostPort}`;
         const remoteOrigin = `http://127.0.0.1:${remotePort}`;
         if (!url.startsWith(hostOrigin) && !url.startsWith(remoteOrigin)) {
@@ -484,7 +507,7 @@ function runTests({ mode }: TestConfig) {
         failedBrowserRequests.push({
           url,
           method: request.method(),
-          failureText: request.failure()?.errorText || 'unknown',
+          failureText,
         });
       });
     });

@@ -87,7 +87,7 @@
       "read-yaml-file>js-yaml": "3.14.2",
       "@remix-run/router": ">=1.23.2",
       "h3": ">=1.15.5",
-      "@rspack/core@2.0.0-beta.2": "npm:@rspack-canary/core@2.0.0-canary-37d930bf-20260228233938",
+      "@rspack/core@2.0.0-beta.2": "npm:@rspack-canary/core@2.0.0-canary-109a5284-20260301031837",
       "@module-federation/bridge-react": "https://pkg.pr.new/module-federation/core/@module-federation/bridge-react@4484",
       "@module-federation/bridge-react-webpack-plugin": "https://pkg.pr.new/module-federation/core/@module-federation/bridge-react-webpack-plugin@4484",
       "@module-federation/bridge-shared": "https://pkg.pr.new/module-federation/core/@module-federation/bridge-shared@4484",

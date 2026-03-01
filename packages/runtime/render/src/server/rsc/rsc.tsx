@@ -12,7 +12,7 @@ export {
 } from 'react-server-dom-rspack/server.node';
 
 type RenderRscOptions = {
-  element: React.ReactElement;
+  element: unknown;
 };
 
 export const renderRsc = (options: RenderRscOptions) => {
@@ -23,6 +23,5 @@ export const renderRsc = (options: RenderRscOptions) => {
 export const handleAction = createActionHandler({
   loadServerAction,
   decodeReply,
-  renderRscStream: element =>
-    renderRsc({ element: element as React.ReactElement }),
+  renderRscStream: element => renderRsc({ element }),
 });

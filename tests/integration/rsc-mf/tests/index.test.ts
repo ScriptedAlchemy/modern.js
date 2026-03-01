@@ -66,12 +66,35 @@ interface FailedBrowserRequestRecord {
   failureText: string;
 }
 
-function isObjectObjectFallbackRequest(url: string) {
+function assertSuccessfulBuild(
+  label: string,
+  result: Awaited<ReturnType<typeof modernBuild>>,
+) {
+  if (result.code !== 0) {
+    throw new Error(
+      `${label} build failed with code ${result.code}\n${result.stderr || result.stdout}`,
+    );
+  }
+}
+
+function isObjectObjectFallbackPath(pathname: string) {
   return (
-    url.includes('/[object%20Object]') ||
-    url.includes('/[object Object]') ||
-    url.includes('/%5Bobject%20Object%5D')
+    pathname === '/[object%20Object]' ||
+    pathname === '/[object Object]' ||
+    pathname === '/%5Bobject%20Object%5D'
   );
+}
+
+function isKnownObjectObjectFallbackRequest(url: string, hostOrigin: string) {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.origin === hostOrigin &&
+      isObjectObjectFallbackPath(parsed.pathname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function waitForActionRequestCount({
@@ -390,6 +413,8 @@ function runTests({ mode }: TestConfig) {
     const browserExposeChunkRequests: string[] = [];
     const failedNetworkRequests: FailedRequestRecord[] = [];
     const failedBrowserRequests: FailedBrowserRequestRecord[] = [];
+    const ignoredObjectObjectNetworkRequests: Array<string> = [];
+    const ignoredObjectObjectBrowserRequests: Array<string> = [];
 
     if (skipForLowerNodeVersion()) {
       return;
@@ -410,8 +435,15 @@ function runTests({ mode }: TestConfig) {
         hostApp = await launchApp(hostDir, hostPort, {}, hostEnv);
         await sleep(2000);
       } else {
-        await modernBuild(remoteDir, [], { env: remoteEnv });
-        await modernBuild(hostDir, [], { env: hostEnv });
+        const remoteBuildResult = await modernBuild(remoteDir, [], {
+          env: remoteEnv,
+        });
+        assertSuccessfulBuild('remote', remoteBuildResult);
+
+        const hostBuildResult = await modernBuild(hostDir, [], {
+          env: hostEnv,
+        });
+        assertSuccessfulBuild('host', hostBuildResult);
 
         remoteApp = await modernServe(remoteDir, remotePort, {
           env: {
@@ -463,14 +495,15 @@ function runTests({ mode }: TestConfig) {
         }
         const url = response.url();
         const request = response.request();
+        const hostOrigin = `http://127.0.0.1:${hostPort}`;
         if (
           request.method() === 'GET' &&
           status === 404 &&
-          isObjectObjectFallbackRequest(url)
+          isKnownObjectObjectFallbackRequest(url, hostOrigin)
         ) {
+          ignoredObjectObjectNetworkRequests.push(url);
           return;
         }
-        const hostOrigin = `http://127.0.0.1:${hostPort}`;
         const remoteOrigin = `http://127.0.0.1:${remotePort}`;
         if (!url.startsWith(hostOrigin) && !url.startsWith(remoteOrigin)) {
           return;
@@ -492,14 +525,15 @@ function runTests({ mode }: TestConfig) {
       page.on('requestfailed', request => {
         const url = request.url();
         const failureText = request.failure()?.errorText || 'unknown';
+        const hostOrigin = `http://127.0.0.1:${hostPort}`;
         if (
           request.method() === 'GET' &&
           failureText === 'net::ERR_ABORTED' &&
-          isObjectObjectFallbackRequest(url)
+          isKnownObjectObjectFallbackRequest(url, hostOrigin)
         ) {
+          ignoredObjectObjectBrowserRequests.push(url);
           return;
         }
-        const hostOrigin = `http://127.0.0.1:${hostPort}`;
         const remoteOrigin = `http://127.0.0.1:${remotePort}`;
         if (!url.startsWith(hostOrigin) && !url.startsWith(remoteOrigin)) {
           return;
@@ -629,6 +663,24 @@ function runTests({ mode }: TestConfig) {
 
     it('should have no failed host or remote browser requests', () => {
       expect(failedBrowserRequests).toEqual([]);
+    });
+
+    it('should only ignore narrowly scoped object-object fallback requests', () => {
+      const ignoredCount =
+        ignoredObjectObjectNetworkRequests.length +
+        ignoredObjectObjectBrowserRequests.length;
+      expect(ignoredCount).toBeLessThanOrEqual(2);
+      expect(
+        [
+          ...ignoredObjectObjectNetworkRequests,
+          ...ignoredObjectObjectBrowserRequests,
+        ].every(requestUrl =>
+          isKnownObjectObjectFallbackRequest(
+            requestUrl,
+            `http://127.0.0.1:${hostPort}`,
+          ),
+        ),
+      ).toBe(true);
     });
   });
 }

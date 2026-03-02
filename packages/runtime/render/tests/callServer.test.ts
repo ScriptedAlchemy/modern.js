@@ -1,24 +1,13 @@
 const ACTION_RESOLVER_KEY = '__MODERN_RSC_ACTION_RESOLVER__';
 const ACTION_URL_RESOLVER_KEY = '__MODERN_RSC_ACTION_URL_RESOLVER__';
 
-type WebpackRequireShim = {
-  u: (chunkId: string | number) => string;
-};
-
-const globalState = globalThis as typeof globalThis & {
-  __webpack_require__?: WebpackRequireShim;
-};
-const originalWebpackRequire = globalState.__webpack_require__;
-
-if (!globalState.__webpack_require__) {
-  globalState.__webpack_require__ = {
-    u: chunkId => String(chunkId),
-  };
-}
-
 type GlobalWithResolvers = typeof globalThis & {
   [ACTION_RESOLVER_KEY]?: (id: string) => string | Promise<string>;
   [ACTION_URL_RESOLVER_KEY]?: (entryName?: string) => string;
+};
+
+const WEBPACK_REQUIRE_SHIM = {
+  u: (chunkId: string | number) => String(chunkId),
 };
 
 describe('requestCallServer pluggable action id resolver', () => {
@@ -36,6 +25,7 @@ describe('requestCallServer pluggable action id resolver', () => {
   let fetchMock: ReturnType<typeof rstest.fn>;
 
   beforeAll(async () => {
+    rstest.stubGlobal('__webpack_require__', WEBPACK_REQUIRE_SHIM);
     const mod = await import('../src/client/callServer');
     requestCallServer = mod.requestCallServer;
     setResolveActionId = mod.setResolveActionId;
@@ -72,11 +62,7 @@ describe('requestCallServer pluggable action id resolver', () => {
   afterAll(() => {
     globalThis.fetch = originalFetch;
     (globalThis as { window?: unknown }).window = originalWindow;
-    if (originalWebpackRequire) {
-      globalState.__webpack_require__ = originalWebpackRequire;
-    } else {
-      delete globalState.__webpack_require__;
-    }
+    rstest.unstubAllGlobals();
   });
 
   const expectActionHeader = (actionId: string, expectedUrl = '/') => {

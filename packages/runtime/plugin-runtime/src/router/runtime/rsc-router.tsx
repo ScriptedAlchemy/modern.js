@@ -2,19 +2,16 @@ import {
   ElementsContext,
   createFromReadableStream,
 } from '@modern-js/render/client';
-import {
-  type StaticHandlerContext,
-  StaticRouterProvider,
-  createStaticRouter,
+import type {
+  RouteObject,
+  StaticHandlerContext,
 } from '@modern-js/runtime-utils/router';
-import {
-  type RouteObject,
-  createBrowserRouter,
-  redirect,
-} from '@modern-js/runtime-utils/router';
+import * as RouterRuntimeModule from '@modern-js/runtime-utils/router/rsc';
 import React from 'react';
 import type { PayloadRoute, ServerPayload } from '../../core/context';
 import { CSSLinks } from './CSSLinks';
+
+const RouterRuntime = RouterRuntimeModule as any;
 
 // There is no `use` method in the following version of react19.
 // In order to avoid errors, it is compatible here.
@@ -277,15 +274,15 @@ export const createClientRouterFromPayload = (
 
   const mergedRoutes = mergeRoutes(processedRoutes, originalRoutes);
 
-  const router = createBrowserRouter(mergedRoutes, {
+  const router = RouterRuntime.createBrowserRouter(mergedRoutes, {
     //@ts-ignore
     hydrationData: payload,
     basename: basename,
-    dataStrategy: async context => {
+    dataStrategy: async (context: any) => {
       const { request, matches } = context;
       const results: Record<string, any> = {};
       const clientMatches = matches.filter(
-        match => (match.route as any).hasClientLoader,
+        (match: any) => (match.route as any).hasClientLoader,
       );
 
       const fetchPromise = fetch(request.url, {
@@ -297,7 +294,7 @@ export const createClientRouterFromPayload = (
       const clientLoadersPromise =
         clientMatches.length > 0
           ? Promise.all(
-              clientMatches.map(async clientMatch => {
+              clientMatches.map(async (clientMatch: any) => {
                 const foundRoute = findRouteInTree(
                   originalRoutes,
                   clientMatch.route.id,
@@ -314,12 +311,12 @@ export const createClientRouterFromPayload = (
       const redirectLocation = res.headers.get('X-Modernjs-Redirect');
 
       if (redirectLocation) {
-        matches.forEach(match => {
+        matches.forEach((match: any) => {
           const routeId = match.route.id;
           if (routeId) {
             results[routeId] = {
               type: 'redirect',
-              result: redirect(redirectLocation),
+              result: RouterRuntime.redirect(redirectLocation),
             };
           }
         });
@@ -350,7 +347,7 @@ export const createClientRouterFromPayload = (
 
       const serverPayload = payload as ServerPayload;
 
-      matches.forEach(match => {
+      matches.forEach((match: any) => {
         const routeId = match.route.id;
         const matchedRoute = serverPayload.routes.find(
           (route: PayloadRoute) => route.id === routeId,
@@ -424,10 +421,13 @@ const createRSCStaticRouterComponent = (
     [],
   );
 
-  const router = createStaticRouter(processedRoutes, routerContext);
+  const router = RouterRuntime.createStaticRouter(
+    processedRoutes,
+    routerContext,
+  );
 
   return (
-    <StaticRouterProvider
+    <RouterRuntime.StaticRouterProvider
       context={routerContext}
       router={router}
       hydrate={false}

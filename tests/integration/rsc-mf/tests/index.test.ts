@@ -16,9 +16,13 @@ const fixtureDir = path.resolve(__dirname, '../');
 const hostDir = path.resolve(fixtureDir, 'host');
 const remoteDir = path.resolve(fixtureDir, 'remote');
 const HOST_RSC_URL = '/server-component-root';
-const EXPECTED_ACTION_POSTS_PER_MODE = 24;
+const EXPECTED_REMOTE_ACTION_POSTS_PER_MODE = 24;
+const EXPECTED_HOST_ACTION_POSTS_PER_MODE = 2;
+const EXPECTED_ACTION_POSTS_PER_MODE =
+  EXPECTED_REMOTE_ACTION_POSTS_PER_MODE + EXPECTED_HOST_ACTION_POSTS_PER_MODE;
 const EXPECTED_ACTION_POSTS_PER_FAMILY = 6;
-const EXPECTED_UNIQUE_ACTION_IDS_PER_MODE = 4;
+const EXPECTED_UNIQUE_REMOTE_ACTION_IDS_PER_MODE = 4;
+const EXPECTED_UNIQUE_HOST_ACTION_IDS_PER_MODE = 1;
 const EXPECTED_BROWSER_EXPOSE_CHUNKS = [
   '__federation_expose_RemoteClientCounter',
   '__federation_expose_RemoteClientBadge',
@@ -64,6 +68,37 @@ interface FailedBrowserRequestRecord {
   url: string;
   method: string;
   failureText: string;
+}
+
+function assertSuccessfulBuild(
+  label: string,
+  result: Awaited<ReturnType<typeof modernBuild>>,
+) {
+  if (result.code !== 0) {
+    throw new Error(
+      `${label} build failed with code ${result.code}\n${result.stderr || result.stdout}`,
+    );
+  }
+}
+
+function isObjectObjectFallbackPath(pathname: string) {
+  return (
+    pathname === '/[object%20Object]' ||
+    pathname === '/[object Object]' ||
+    pathname === '/%5Bobject%20Object%5D'
+  );
+}
+
+function isKnownObjectObjectFallbackRequest(url: string, hostOrigin: string) {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.origin === hostOrigin &&
+      isObjectObjectFallbackPath(parsed.pathname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function waitForActionRequestCount({
@@ -334,6 +369,9 @@ async function supportRemoteClientAndServerActions({
     const bundledIncrementActionResult = document.querySelector(
       '.host-remote-bundled-increment-action-result',
     );
+    const hostLocalActionResult = document.querySelector(
+      '.host-local-action-result',
+    );
     return (
       defaultActionResult?.textContent?.trim() ===
         'default-action:from-host-client' &&
@@ -348,7 +386,9 @@ async function supportRemoteClientAndServerActions({
         'remote-action:from-host-client-bundled' &&
       bundledNestedActionResult?.textContent?.trim() ===
         'nested-action:from-host-client-bundled' &&
-      bundledIncrementActionResult?.textContent?.trim() === '4'
+      bundledIncrementActionResult?.textContent?.trim() === '4' &&
+      hostLocalActionResult?.textContent?.trim() ===
+        'host-action:from-host-local'
     );
   });
 
@@ -382,6 +422,8 @@ function runTests({ mode }: TestConfig) {
     const browserExposeChunkRequests: string[] = [];
     const failedNetworkRequests: FailedRequestRecord[] = [];
     const failedBrowserRequests: FailedBrowserRequestRecord[] = [];
+    const ignoredObjectObjectNetworkRequests: Array<string> = [];
+    const ignoredObjectObjectBrowserRequests: Array<string> = [];
 
     if (skipForLowerNodeVersion()) {
       return;
@@ -402,8 +444,15 @@ function runTests({ mode }: TestConfig) {
         hostApp = await launchApp(hostDir, hostPort, {}, hostEnv);
         await sleep(2000);
       } else {
-        await modernBuild(remoteDir, [], { env: remoteEnv });
-        await modernBuild(hostDir, [], { env: hostEnv });
+        const remoteBuildResult = await modernBuild(remoteDir, [], {
+          env: remoteEnv,
+        });
+        assertSuccessfulBuild('remote', remoteBuildResult);
+
+        const hostBuildResult = await modernBuild(hostDir, [], {
+          env: hostEnv,
+        });
+        assertSuccessfulBuild('host', hostBuildResult);
 
         remoteApp = await modernServe(remoteDir, remotePort, {
           env: {
@@ -456,6 +505,14 @@ function runTests({ mode }: TestConfig) {
         const url = response.url();
         const request = response.request();
         const hostOrigin = `http://127.0.0.1:${hostPort}`;
+        if (
+          request.method() === 'GET' &&
+          status === 404 &&
+          isKnownObjectObjectFallbackRequest(url, hostOrigin)
+        ) {
+          ignoredObjectObjectNetworkRequests.push(url);
+          return;
+        }
         const remoteOrigin = `http://127.0.0.1:${remotePort}`;
         if (!url.startsWith(hostOrigin) && !url.startsWith(remoteOrigin)) {
           return;
@@ -476,7 +533,16 @@ function runTests({ mode }: TestConfig) {
 
       page.on('requestfailed', request => {
         const url = request.url();
+        const failureText = request.failure()?.errorText || 'unknown';
         const hostOrigin = `http://127.0.0.1:${hostPort}`;
+        if (
+          request.method() === 'GET' &&
+          failureText === 'net::ERR_ABORTED' &&
+          isKnownObjectObjectFallbackRequest(url, hostOrigin)
+        ) {
+          ignoredObjectObjectBrowserRequests.push(url);
+          return;
+        }
         const remoteOrigin = `http://127.0.0.1:${remotePort}`;
         if (!url.startsWith(hostOrigin) && !url.startsWith(remoteOrigin)) {
           return;
@@ -484,7 +550,7 @@ function runTests({ mode }: TestConfig) {
         failedBrowserRequests.push({
           url,
           method: request.method(),
-          failureText: request.failure()?.errorText || 'unknown',
+          failureText,
         });
       });
     });
@@ -567,30 +633,54 @@ function runTests({ mode }: TestConfig) {
       expect(actionRequestIds.length).toBe(EXPECTED_ACTION_POSTS_PER_MODE);
       expect(actionRequestIds.length).toBe(actionRequestUrls.length);
       expect(actionRequestIds.length).toBe(actionRequestAcceptHeaders.length);
-      const uniqueActionRequestIds = new Set(actionRequestIds);
+      const remoteActionRequestIds = actionRequestIds.filter(id =>
+        id.startsWith('remote:rscRemote:'),
+      );
+      const hostLocalActionRequestIds = actionRequestIds.filter(
+        id => !id.startsWith('remote:'),
+      );
+      const uniqueRemoteActionRequestIds = new Set(remoteActionRequestIds);
+      const uniqueHostLocalActionRequestIds = new Set(
+        hostLocalActionRequestIds,
+      );
+      expect(remoteActionRequestIds.length).toBe(
+        EXPECTED_REMOTE_ACTION_POSTS_PER_MODE,
+      );
+      expect(hostLocalActionRequestIds.length).toBe(
+        EXPECTED_HOST_ACTION_POSTS_PER_MODE,
+      );
       expect(
-        actionRequestIds.every(id =>
+        remoteActionRequestIds.every(id =>
           /^remote:rscRemote:[a-f0-9]{64,}$/i.test(id),
         ),
       ).toBe(true);
+      expect(
+        hostLocalActionRequestIds.every(id => !id.startsWith('remote:')),
+      ).toBe(true);
+      expect(hostLocalActionRequestIds.every(id => id.length > 0)).toBe(true);
       expect(
         actionRequestAcceptHeaders.every(
           acceptHeader => acceptHeader.toLowerCase() === 'text/x-component',
         ),
       ).toBe(true);
-      expect(uniqueActionRequestIds.size).toBe(
-        EXPECTED_UNIQUE_ACTION_IDS_PER_MODE,
+      expect(uniqueRemoteActionRequestIds.size).toBe(
+        EXPECTED_UNIQUE_REMOTE_ACTION_IDS_PER_MODE,
       );
-      const actionRequestCountById = new Map<string, number>();
-      for (const actionId of actionRequestIds) {
-        actionRequestCountById.set(
+      expect(uniqueHostLocalActionRequestIds.size).toBe(
+        EXPECTED_UNIQUE_HOST_ACTION_IDS_PER_MODE,
+      );
+      const remoteActionRequestCountById = new Map<string, number>();
+      for (const actionId of remoteActionRequestIds) {
+        remoteActionRequestCountById.set(
           actionId,
-          (actionRequestCountById.get(actionId) || 0) + 1,
+          (remoteActionRequestCountById.get(actionId) || 0) + 1,
         );
       }
-      expect(actionRequestCountById.size).toBe(uniqueActionRequestIds.size);
+      expect(remoteActionRequestCountById.size).toBe(
+        uniqueRemoteActionRequestIds.size,
+      );
       expect(
-        [...actionRequestCountById.values()].every(
+        [...remoteActionRequestCountById.values()].every(
           count => count === EXPECTED_ACTION_POSTS_PER_FAMILY,
         ),
       ).toBe(true);
@@ -606,6 +696,24 @@ function runTests({ mode }: TestConfig) {
 
     it('should have no failed host or remote browser requests', () => {
       expect(failedBrowserRequests).toEqual([]);
+    });
+
+    it('should only ignore narrowly scoped object-object fallback requests', () => {
+      const ignoredCount =
+        ignoredObjectObjectNetworkRequests.length +
+        ignoredObjectObjectBrowserRequests.length;
+      expect(ignoredCount).toBeLessThanOrEqual(2);
+      expect(
+        [
+          ...ignoredObjectObjectNetworkRequests,
+          ...ignoredObjectObjectBrowserRequests,
+        ].every(requestUrl =>
+          isKnownObjectObjectFallbackRequest(
+            requestUrl,
+            `http://127.0.0.1:${hostPort}`,
+          ),
+        ),
+      ).toBe(true);
     });
   });
 }

@@ -146,7 +146,10 @@ describe('rsc-mf containment contracts', () => {
 
   it('keeps RSC action 500 details dev-only in core runtime', () => {
     const rscServerPath = resolvePackageFilePath('@modern-js/render', [
+      'src/server/rsc/actionHandler.ts',
       'src/server/rsc/rsc.tsx',
+      'dist/cjs/server/rsc/actionHandler.js',
+      'dist/esm/server/rsc/actionHandler.js',
       'dist/cjs/server/rsc/rsc.js',
       'dist/esm/server/rsc/rsc.js',
     ]);

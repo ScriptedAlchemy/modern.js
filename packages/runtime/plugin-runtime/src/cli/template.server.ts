@@ -26,8 +26,12 @@ import {
   createRequestHandler,
 } from '@#metaName/runtime/ssr/server';
 import { RSCServerSlot } from '@#metaName/runtime/rsc/client';
-import { renderRsc } from '@#metaName/runtime/rsc/server';
-export { handleAction } from '@#metaName/runtime/rsc/server';
+import {
+  renderRsc,
+  handleAction,
+  RSC_FLIGHT_CONTENT_TYPE,
+} from '@#metaName/runtime/rsc/server';
+export { handleAction };
 
 const handleRequest = async (request, ServerRoot, options) => {
 
@@ -58,7 +62,11 @@ const handleRSCRequest = async (request, ServerRoot, options) => {
     element: options.rscRoot
   });
 
-  return new Response(stream);
+  return new Response(stream, {
+    headers: {
+      'content-type': RSC_FLIGHT_CONTENT_TYPE
+    },
+  });
 }
 
 
@@ -92,8 +100,13 @@ export const entryForCSRWithRSC = ({
   import {
     createRequestHandler,
   } from '@${metaName}/runtime/ssr/server';
-  import { renderCSRWithRSC, renderRsc } from '@${metaName}/runtime/rsc/server';
-  export { handleAction } from '@${metaName}/runtime/rsc/server';
+  import {
+    renderCSRWithRSC,
+    renderRsc,
+    handleAction,
+    RSC_FLIGHT_CONTENT_TYPE,
+  } from '@${metaName}/runtime/rsc/server';
+  export { handleAction };
 
   const handleCSRRender = async (request, ServerRoot, options) => {
     return renderCSRWithRSC({
@@ -111,7 +124,11 @@ export const entryForCSRWithRSC = ({
             element: options.rscRoot,
     });
 
-    return new Response(stream);
+    return new Response(stream, {
+      headers: {
+        'content-type': RSC_FLIGHT_CONTENT_TYPE
+      },
+    });
   }
 
   export const rscPayloadHandler = createRequestHandler(handleRequest, {

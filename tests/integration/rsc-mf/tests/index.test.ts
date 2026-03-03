@@ -16,9 +16,13 @@ const fixtureDir = path.resolve(__dirname, '../');
 const hostDir = path.resolve(fixtureDir, 'host');
 const remoteDir = path.resolve(fixtureDir, 'remote');
 const HOST_RSC_URL = '/server-component-root';
-const EXPECTED_ACTION_POSTS_PER_MODE = 24;
+const EXPECTED_REMOTE_ACTION_POSTS_PER_MODE = 24;
+const EXPECTED_HOST_ACTION_POSTS_PER_MODE = 2;
+const EXPECTED_ACTION_POSTS_PER_MODE =
+  EXPECTED_REMOTE_ACTION_POSTS_PER_MODE + EXPECTED_HOST_ACTION_POSTS_PER_MODE;
 const EXPECTED_ACTION_POSTS_PER_FAMILY = 6;
-const EXPECTED_UNIQUE_ACTION_IDS_PER_MODE = 4;
+const EXPECTED_UNIQUE_REMOTE_ACTION_IDS_PER_MODE = 4;
+const EXPECTED_UNIQUE_HOST_ACTION_IDS_PER_MODE = 1;
 const EXPECTED_BROWSER_EXPOSE_CHUNKS = [
   '__federation_expose_RemoteClientCounter',
   '__federation_expose_RemoteClientBadge',
@@ -365,6 +369,9 @@ async function supportRemoteClientAndServerActions({
     const bundledIncrementActionResult = document.querySelector(
       '.host-remote-bundled-increment-action-result',
     );
+    const hostLocalActionResult = document.querySelector(
+      '.host-local-action-result',
+    );
     return (
       defaultActionResult?.textContent?.trim() ===
         'default-action:from-host-client' &&
@@ -379,7 +386,9 @@ async function supportRemoteClientAndServerActions({
         'remote-action:from-host-client-bundled' &&
       bundledNestedActionResult?.textContent?.trim() ===
         'nested-action:from-host-client-bundled' &&
-      bundledIncrementActionResult?.textContent?.trim() === '4'
+      bundledIncrementActionResult?.textContent?.trim() === '4' &&
+      hostLocalActionResult?.textContent?.trim() ===
+        'host-action:from-host-local'
     );
   });
 
@@ -624,30 +633,54 @@ function runTests({ mode }: TestConfig) {
       expect(actionRequestIds.length).toBe(EXPECTED_ACTION_POSTS_PER_MODE);
       expect(actionRequestIds.length).toBe(actionRequestUrls.length);
       expect(actionRequestIds.length).toBe(actionRequestAcceptHeaders.length);
-      const uniqueActionRequestIds = new Set(actionRequestIds);
+      const remoteActionRequestIds = actionRequestIds.filter(id =>
+        id.startsWith('remote:rscRemote:'),
+      );
+      const hostLocalActionRequestIds = actionRequestIds.filter(
+        id => !id.startsWith('remote:'),
+      );
+      const uniqueRemoteActionRequestIds = new Set(remoteActionRequestIds);
+      const uniqueHostLocalActionRequestIds = new Set(
+        hostLocalActionRequestIds,
+      );
+      expect(remoteActionRequestIds.length).toBe(
+        EXPECTED_REMOTE_ACTION_POSTS_PER_MODE,
+      );
+      expect(hostLocalActionRequestIds.length).toBe(
+        EXPECTED_HOST_ACTION_POSTS_PER_MODE,
+      );
       expect(
-        actionRequestIds.every(id =>
+        remoteActionRequestIds.every(id =>
           /^remote:rscRemote:[a-f0-9]{64,}$/i.test(id),
         ),
       ).toBe(true);
+      expect(
+        hostLocalActionRequestIds.every(id => !id.startsWith('remote:')),
+      ).toBe(true);
+      expect(hostLocalActionRequestIds.every(id => id.length > 0)).toBe(true);
       expect(
         actionRequestAcceptHeaders.every(
           acceptHeader => acceptHeader.toLowerCase() === 'text/x-component',
         ),
       ).toBe(true);
-      expect(uniqueActionRequestIds.size).toBe(
-        EXPECTED_UNIQUE_ACTION_IDS_PER_MODE,
+      expect(uniqueRemoteActionRequestIds.size).toBe(
+        EXPECTED_UNIQUE_REMOTE_ACTION_IDS_PER_MODE,
       );
-      const actionRequestCountById = new Map<string, number>();
-      for (const actionId of actionRequestIds) {
-        actionRequestCountById.set(
+      expect(uniqueHostLocalActionRequestIds.size).toBe(
+        EXPECTED_UNIQUE_HOST_ACTION_IDS_PER_MODE,
+      );
+      const remoteActionRequestCountById = new Map<string, number>();
+      for (const actionId of remoteActionRequestIds) {
+        remoteActionRequestCountById.set(
           actionId,
-          (actionRequestCountById.get(actionId) || 0) + 1,
+          (remoteActionRequestCountById.get(actionId) || 0) + 1,
         );
       }
-      expect(actionRequestCountById.size).toBe(uniqueActionRequestIds.size);
+      expect(remoteActionRequestCountById.size).toBe(
+        uniqueRemoteActionRequestIds.size,
+      );
       expect(
-        [...actionRequestCountById.values()].every(
+        [...remoteActionRequestCountById.values()].every(
           count => count === EXPECTED_ACTION_POSTS_PER_FAMILY,
         ),
       ).toBe(true);

@@ -7,6 +7,7 @@ import * as remoteActionBundle from 'rscRemote/actionBundle';
 import { incrementRemoteCount, remoteActionEcho } from 'rscRemote/actions';
 import { defaultRemoteAction } from 'rscRemote/defaultAction';
 import { nestedRemoteAction } from 'rscRemote/nestedActions';
+import { hostLocalAction } from './hostAction';
 
 export default function HostRemoteActionRunner() {
   const [defaultResult, setDefaultResult] = useState('');
@@ -17,6 +18,7 @@ export default function HostRemoteActionRunner() {
   const [bundledEchoResult, setBundledEchoResult] = useState('');
   const [bundledNestedResult, setBundledNestedResult] = useState('');
   const [bundledIncrementResult, setBundledIncrementResult] = useState('');
+  const [hostLocalResult, setHostLocalResult] = useState('');
   const [isPending, setIsPending] = useState(false);
 
   const runActions = async () => {
@@ -33,6 +35,7 @@ export default function HostRemoteActionRunner() {
         bundledDefaultValue,
         bundledEchoValue,
         bundledNestedValue,
+        hostLocalValue,
       ] = await Promise.all([
         defaultRemoteAction('from-host-client'),
         remoteActionEcho('from-host-client'),
@@ -44,6 +47,7 @@ export default function HostRemoteActionRunner() {
         remoteActionBundle.bundledNestedRemoteAction(
           'from-host-client-bundled',
         ),
+        hostLocalAction('from-host-local'),
       ]);
       const directIncrementValue = await incrementRemoteCount(
         0,
@@ -62,6 +66,7 @@ export default function HostRemoteActionRunner() {
       setBundledEchoResult(bundledEchoValue);
       setBundledNestedResult(bundledNestedValue);
       setBundledIncrementResult(String(bundledIncrementValue));
+      setHostLocalResult(hostLocalValue);
     } finally {
       setIsPending(false);
     }
@@ -94,6 +99,7 @@ export default function HostRemoteActionRunner() {
       <p className="host-remote-bundled-increment-action-result">
         {bundledIncrementResult}
       </p>
+      <p className="host-local-action-result">{hostLocalResult}</p>
     </div>
   );
 }

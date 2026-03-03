@@ -1,27 +1,29 @@
-const ACTION_RESOLVER_KEY = '__MODERN_RSC_ACTION_RESOLVER__';
-const ACTION_URL_RESOLVER_KEY = '__MODERN_RSC_ACTION_URL_RESOLVER__';
-
-type GlobalWithResolvers = typeof globalThis & {
-  [ACTION_RESOLVER_KEY]?: (id: string) => string | Promise<string>;
-  [ACTION_URL_RESOLVER_KEY]?: (entryName?: string) => string;
-};
-
 const WEBPACK_REQUIRE_SHIM = {
   u: (chunkId: string | number) => String(chunkId),
 };
 
 describe('requestCallServer pluggable action id resolver', () => {
-  const originalFetch = globalThis.fetch;
-  const originalWindow = (globalThis as { window?: unknown }).window;
+  const runtimeGlobal = global as typeof global & {
+    fetch?: typeof fetch;
+    window?: { __MODERN_JS_ENTRY_NAME: string };
+  };
+  const originalFetch = runtimeGlobal.fetch;
+  const originalWindow = runtimeGlobal.window;
   let requestCallServer: typeof import(
     '../src/client/callServer',
   ).requestCallServer;
   let setResolveActionId: typeof import(
     '../src/client/callServer',
   ).setResolveActionId;
+  let setActionIdResolver: typeof import(
+    '../src/client/callServer',
+  ).setActionIdResolver;
   let setResolveActionRequestUrl: typeof import(
     '../src/client/callServer',
   ).setResolveActionRequestUrl;
+  let setActionRequestUrlResolver: typeof import(
+    '../src/client/callServer',
+  ).setActionRequestUrlResolver;
   let fetchMock: ReturnType<typeof rstest.fn>;
 
   beforeAll(async () => {
@@ -29,13 +31,13 @@ describe('requestCallServer pluggable action id resolver', () => {
     const mod = await import('../src/client/callServer');
     requestCallServer = mod.requestCallServer;
     setResolveActionId = mod.setResolveActionId;
+    setActionIdResolver = mod.setActionIdResolver;
     setResolveActionRequestUrl = mod.setResolveActionRequestUrl;
+    setActionRequestUrlResolver = mod.setActionRequestUrlResolver;
   });
 
   beforeEach(() => {
-    (
-      globalThis as unknown as { window?: { __MODERN_JS_ENTRY_NAME: string } }
-    ).window = {
+    runtimeGlobal.window = {
       __MODERN_JS_ENTRY_NAME: 'main',
     };
 
@@ -46,22 +48,20 @@ describe('requestCallServer pluggable action id resolver', () => {
         statusText: 'OK',
       } as Response;
     });
-    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    runtimeGlobal.fetch = fetchMock as typeof fetch;
   });
 
   afterEach(() => {
-    delete (globalThis as GlobalWithResolvers)[ACTION_RESOLVER_KEY];
-    delete (globalThis as GlobalWithResolvers)[ACTION_URL_RESOLVER_KEY];
-    (
-      globalThis as unknown as { window?: { __MODERN_JS_ENTRY_NAME: string } }
-    ).window = {
+    setResolveActionId(undefined);
+    setResolveActionRequestUrl(undefined);
+    runtimeGlobal.window = {
       __MODERN_JS_ENTRY_NAME: 'main',
     };
   });
 
   afterAll(() => {
-    globalThis.fetch = originalFetch;
-    (globalThis as { window?: unknown }).window = originalWindow;
+    runtimeGlobal.fetch = originalFetch;
+    runtimeGlobal.window = originalWindow;
     rstest.unstubAllGlobals();
   });
 
@@ -131,22 +131,19 @@ describe('requestCallServer pluggable action id resolver', () => {
     });
   });
 
-  test('resolver set via global key is picked up', async () => {
-    (globalThis as GlobalWithResolvers)[ACTION_RESOLVER_KEY] = id =>
-      `global:${id}`;
+  test('alias setter remaps action ids', async () => {
+    setActionIdResolver(id => `alias:${id}`);
 
     await requestCallServer('action123', []);
 
-    expectActionHeader('global:action123');
+    expectActionHeader('alias:action123');
   });
 
   test('uses custom request url resolver when registered', async () => {
     setResolveActionRequestUrl(entryName =>
       entryName ? `/custom/${entryName}` : '/custom',
     );
-    (
-      globalThis as unknown as { window?: { __MODERN_JS_ENTRY_NAME: string } }
-    ).window = {
+    runtimeGlobal.window = {
       __MODERN_JS_ENTRY_NAME: 'server-component-root',
     };
 
@@ -155,13 +152,12 @@ describe('requestCallServer pluggable action id resolver', () => {
     expectActionHeader('entry-action', '/custom/server-component-root');
   });
 
-  test('request url resolver set via global key is picked up', async () => {
-    (globalThis as GlobalWithResolvers)[ACTION_URL_RESOLVER_KEY] = () =>
-      '/global/custom';
+  test('alias request url resolver is used', async () => {
+    setActionRequestUrlResolver(() => '/alias/custom');
 
     await requestCallServer('action123', []);
 
-    expectActionHeader('action123', '/global/custom');
+    expectActionHeader('action123', '/alias/custom');
   });
 
   test('wraps request url resolver errors with CallServerError', async () => {
@@ -177,9 +173,7 @@ describe('requestCallServer pluggable action id resolver', () => {
   });
 
   test('uses entry specific action endpoint when entry name is not main/index', async () => {
-    (
-      globalThis as unknown as { window?: { __MODERN_JS_ENTRY_NAME: string } }
-    ).window = {
+    runtimeGlobal.window = {
       __MODERN_JS_ENTRY_NAME: 'server-component-root',
     };
 
@@ -189,9 +183,7 @@ describe('requestCallServer pluggable action id resolver', () => {
   });
 
   test('falls back to root endpoint when window is unavailable', async () => {
-    (
-      globalThis as unknown as { window?: { __MODERN_JS_ENTRY_NAME: string } }
-    ).window = undefined;
+    runtimeGlobal.window = undefined;
 
     await requestCallServer('no-window-action', []);
 
